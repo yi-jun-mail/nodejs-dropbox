@@ -30,6 +30,7 @@
     "babel-preset-nodev6": "^1.0.0",
     "babel-register": "^6.14.0",
     "bluebird-nodeify": "^1.1.1",
+    "body-parser": "^1.15.2",
     "express": "^4.14.0",
     "json-socket": "^0.2.0",
     "mime-types": "^2.1.12",
@@ -40,6 +41,7 @@
     "rimraf": "^2.5.4",
     "songbird": "^1.0.4",
     "trycatch": "^1.5.21",
+    "unzip": "^0.1.11",
     "yargs": "^6.2.0"
   },
   "devDependencies": {

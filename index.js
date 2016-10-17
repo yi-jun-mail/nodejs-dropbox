@@ -17,6 +17,7 @@ let argv = require('yargs').argv
 let net = require('net');
 let archiver = require('archiver')
 let JsonSocket = require('json-socket');
+let bodyParser = require('body-parser')
 
 require('songbird')
 
@@ -30,6 +31,9 @@ const SERVER_DIR = path.resolve(path.join(storage_dir, "/server"))
 const CLIENT_DIR = path.resolve(path.join(storage_dir, "/client"))
 
 let app = express()
+//bodyParse will read to the end of the inputstream, and mess up with the pipe operation
+//app.use(bodyParser.json())
+
 var server = net.createServer();
 var clientsocket 
 
@@ -42,16 +46,11 @@ app.listen(PORT, ()=> console.log(`LISTENING @ http://127.0.0.1:${PORT}`))
 app.get('*', setFileMeta, setDirDetails, sendHeaders, (req, res) => {
   console.log(res.body)
   if(res.body) {
-    if(req.get('Accept') === 'application/x-gtar') {
-       console.log(req.get('Accept'))
-       res.setHeader('Content-Type', 'application/x-gtar')
-       var archive = archiver.create('zip', {})
-       archive.pipe(res)
-       archive.bulk([{ 
-          expand: true,
-          cwd: SERVER_DIR, 
-          src: ['**/*'] 
-       }]).finalize()
+    if(req.get('Accept') === 'application/zip') {
+       console.log('Accept: ' + req.get('Accept'))
+       var zipfilepath = path.join(__dirname, "dir.zip")
+       zipDir(zipfilepath)
+       res.download(zipfilepath);
     } else {
        res.json(res.body)
     }
@@ -75,10 +74,10 @@ app.delete('*', setFileMeta, (req, res, next) => {
     //notify the tcp client
     if(clientsocket) {
       clientsocket.sendMessage({verb: 'delete', path: req.url})   
+      console.log("send delete to client: " + req.url)
     }
   })().then(() => next())
 })
-    
 
 app.put('*', setFileMeta, setDirDetails, (req, res, next) => {
   (async () => {
@@ -89,8 +88,9 @@ app.put('*', setFileMeta, setDirDetails, (req, res, next) => {
         req.pipe(fs.createWriteStream(req.filePath))
         //notify the tcp client
         if(clientsocket) {
-           clientsocket.sendMessage({verb: 'update', path: req.url, body: req.body})
-           console.log("send creat/update to client: " + req.url + " body:" + req.body)
+           let content = await fs.promise.readFile(req.filePath, "utf-8")
+           clientsocket.sendMessage({verb: 'update', path: req.url, body: content})
+           console.log("send creat/update to client: " + req.url + " body:" + content)
         }
      } else {
         //notify the tcp client
@@ -114,8 +114,9 @@ app.post('*', setFileMeta, setDirDetails, (req, res, next) => {
 
     //notify the tcp client
     if(clientsocket) {
-      console.log(req.body)
-      clientsocket.sendMessage({verb: 'update', path: req.filePath, body: req.body})
+      let content = await fs.promise.readFile(req.filePath, "utf-8")
+      console.log(content)
+      clientsocket.sendMessage({verb: 'update', path: req.url, body: content})
     }
     res.end()
   })().then(() => next())
@@ -154,12 +155,25 @@ function sendHeaders(req, res, next) {
   })().then(() => next())
 }
 
+function zipDir(zipfilepath) {
+  var archive = archiver.create('zip', {});
+  var output = fs.createWriteStream(zipfilepath)
+  archive.pipe(output);
+  archive.directory(SERVER_DIR).finalize();
+}
+
 //start the tcp server
 server.on('connection', function(socket) { //This is a standard net.Socket
     clientsocket = new JsonSocket(socket); //Now we've decorated the net.Socket to be a JsonSocket
-    clientsocket.on('message', function(message) {
+    clientsocket.on('message', async function(message) {
         if(message.verb === 'init') {
-           clientsocket.sendMessage({verb: init, body: {}})
+           var zipfilepath = path.join(__dirname, "dir.zip")
+           zipDir(zipfilepath)
+           let dirfiles = await fs.promise.readFile(zipfilepath, 'utf8')
+           var buf = Buffer.from(dirfiles, 'utf8')
+           var base64buf = buf.toString('base64')
+           console.log(base64buf)
+           clientsocket.sendMessage({verb: 'init', body: base64buf})
         }
     });
 });

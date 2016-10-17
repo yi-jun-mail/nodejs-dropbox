@@ -8,6 +8,7 @@ let archiver = require('archiver')
 let JsonSocket = require('json-socket');
 let http = require('http')
 let request = require('request')
+let unzip = require('unzip')
 require('songbird')
 
 let storage_dir  = argv.dir || process.cwd()
@@ -22,7 +23,7 @@ socket.on('connect', function() { //Don't send until we're connected
     socket.sendMessage({verb: 'init'});
     socket.on('message', async function(message) {
         if(message.verb === 'init') {
-          await initdir(message.body) 
+          //await initdir(message.body) 
         } else if(message.verb === 'mkdir') {
           await mkdir(message.path)
         } else if(message.verb === 'delete') {
@@ -51,7 +52,14 @@ async function update(filepath, body) {
   console.log("create/update " + filepath)
 }
 
-async function initdir(dirpath, body) {
+async function initdir(body) {
+  await rm(CLIENT_DIR)
+  await mkdir(CLIENT_DIR)
+  console.log(body)
+  var base64buf = Buffer.from(body, 'base64')
+  var buf = base64buf.toString('utf8')
+  await fs.promise.writeFile("dir.zip",  buf)
+  fs.createReadStream('dir.zip').pipe(unzip.Extract({ path: CLIENT_DIR }));
 }
 
 
